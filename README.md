@@ -1,1 +1,1 @@
-# morning-dubz-groupme-bot
+# Morning Dubz GroupMe Bot
