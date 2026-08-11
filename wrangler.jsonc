@@ -11,7 +11,6 @@
 		"enabled": true,
 	},
 	"upload_source_maps": true,
-	"compatibility_flags": ["nodejs_compat_v2"],
 	"secrets": {
 		"required": ["GROUPME_ACCESS_TOKEN"],
 	},
