@@ -10,13 +10,17 @@
 		"cf-typegen": "wrangler types"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"@cloudflare/vitest-pool-workers": "^0.21.1",
 		"@types/node": "^26.2.0",
-		"typescript": "^5.5.2",
-		"vitest": "~3.2.0",
-		"wrangler": "^4.120.1"
+		"msw": "^2.15.0",
+		"typescript": "^7.0.2",
+		"vitest": "~4.1.10",
+		"wrangler": "^4.121.0"
 	},
 	"dependencies": {
 		"zod": "^4.4.3"
+	},
+	"allowScripts": {
+		"msw@2.15.0": true
 	}
 }

@@ -12,7 +12,7 @@
  */
 import { z } from 'zod'
 
-const BodySchema = z.object({
+const MessageSchema = z.object({
 	attachments: z.array(
 		z.discriminatedUnion('type', [
 			z.object({
@@ -73,18 +73,13 @@ const BodySchema = z.object({
 			}),
 		])
 	),
-	// avatar_url: z.string().url().optional(),
-	// created_at: z.string().datetime().optional(),
-	// group_id: z.string().uuid().optional(),
-	// id: z.string().uuid().optional(),
-	// name: z.string().max(100).optional(),
+	group_id: z.string(),
+	id: z.string(),
 	sender_id: z.string().max(100),
-	sender_type: z.enum(['system', 'service']),
+	sender_type: z.enum(['user', 'service', 'system']),
 	source_guid: z.string(),
 	system: z.boolean(),
 	text: z.string(),
-	// user_id: z.string().max(100).optional(),
-	// __IMTMETHOD__: z.literal('POST').optional(),
 })
 
 const createSuccessResponse = () =>
@@ -95,17 +90,17 @@ const createSuccessResponse = () =>
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
+		const groupMeAccessToken = '<ACCESS_TOKEN>'
 		if (request.method !== 'POST') {
 			return new Response('Method not allowed', { status: 405 })
 		}
 
-		let body: z.infer<typeof BodySchema>
+		let body: z.infer<typeof MessageSchema>
 
 		try {
 			const rawBody = await request.json()
-			body = BodySchema.parse(rawBody)
+			body = MessageSchema.parse(rawBody)
 		} catch (err) {
-			console.error('🚀 ~ err:', err)
 			if (err instanceof z.ZodError) {
 				return new Response(
 					JSON.stringify({ error: err.message, issues: err.issues }),
@@ -128,7 +123,11 @@ export default {
 			body.attachments[0]?.type === 'event' &&
 			body.text.endsWith('is starting now')
 		) {
-			console.log('🚀 ~ event is starting:', body)
+			await groupMeApi.unpinEvent({
+				groupMeAccessToken,
+				groupId: body.group_id,
+				eventId: body.attachments[0].event_id,
+			})
 			return createSuccessResponse()
 		}
 		// event is created
@@ -137,7 +136,11 @@ export default {
 			body.attachments[0].type === 'event' &&
 			body.text.includes('created event')
 		) {
-			console.log('🚀 ~ event is created:', body)
+			await groupMeApi.pinEvent({
+				groupId: body.group_id,
+				messageId: body.id,
+				groupMeAccessToken,
+			})
 			return createSuccessResponse()
 		}
 
@@ -147,13 +150,78 @@ export default {
 			body.attachments[0].type === 'event' &&
 			body.sender_id === 'system' &&
 			body.system === true &&
-			body.text.includes('cancelled')
+			body.text.includes('canceled')
 		) {
-			console.log('🚀 ~ event is cancelled:', body)
+			await groupMeApi.unpinEvent({
+				groupMeAccessToken,
+				groupId: body.group_id,
+				eventId: body.attachments[0].event_id,
+			})
 			return createSuccessResponse()
 		}
 
-		console.log('🚀 ~ SKIPPING:', body)
 		return createSuccessResponse()
 	},
 } satisfies ExportedHandler<Env>
+
+const groupMeApi = {
+	pinEvent: async ({
+		groupId,
+		messageId,
+		groupMeAccessToken,
+	}: {
+		groupId: string
+		messageId: string
+		groupMeAccessToken: string
+	}) =>
+		await fetch(
+			`https://api.groupme.com/v3/conversations/${groupId}/messages/${messageId}/pin`,
+			{
+				method: 'POST',
+				headers: { 'X-Access-Token': groupMeAccessToken },
+			}
+		),
+
+	unpinEvent: async ({
+		groupMeAccessToken,
+		groupId,
+		eventId,
+	}: {
+		groupMeAccessToken: string
+		groupId: string
+		eventId: string
+	}) => {
+		const pinnedMessages = await fetch(
+			`https://api.groupme.com/v3/pinned/groups/${groupId}/messages`,
+			{ headers: { 'X-Access-Token': groupMeAccessToken } }
+		)
+			.then((res) => res.json())
+			.then((data) =>
+				z
+					.object({
+						response: z.object({
+							messages: z.array(MessageSchema),
+						}),
+					})
+					.parseAsync(data)
+			)
+			.then((data) => data.response.messages)
+
+		const matchedMessage = pinnedMessages.find((message) =>
+			message.attachments.some(
+				(attachment) =>
+					attachment.type === 'event' &&
+					attachment.event_id === eventId
+			)
+		)
+		if (matchedMessage === undefined) return
+
+		await fetch(
+			`https://api.groupme.com/v3/conversations/${groupId}/messages/${matchedMessage.id}/unpin`,
+			{
+				method: 'POST',
+				headers: { 'X-Access-Token': groupMeAccessToken },
+			}
+		)
+	},
+}
