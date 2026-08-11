@@ -1,3 +1,5 @@
+import { env } from 'cloudflare:workers'
+
 /**
  * Welcome to Cloudflare Workers! This is your first worker.
  *
@@ -12,6 +14,7 @@
  */
 import { z } from 'zod'
 
+const GROUPME_ACCESS_TOKEN = env.GROUPME_ACCESS_TOKEN
 const MessageSchema = z.object({
 	attachments: z.array(
 		z.discriminatedUnion('type', [
@@ -82,15 +85,8 @@ const MessageSchema = z.object({
 	text: z.string(),
 })
 
-const createSuccessResponse = () =>
-	new Response(JSON.stringify({ success: true }), {
-		status: 200,
-		headers: { 'Content-Type': 'application/json' },
-	})
-
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
-		const groupMeAccessToken = '<ACCESS_TOKEN>'
 		if (request.method !== 'POST') {
 			return new Response('Method not allowed', { status: 405 })
 		}
@@ -124,7 +120,6 @@ export default {
 			body.text.endsWith('is starting now')
 		) {
 			await groupMeApi.unpinEvent({
-				groupMeAccessToken,
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
 			})
@@ -139,7 +134,6 @@ export default {
 			await groupMeApi.pinEvent({
 				groupId: body.group_id,
 				messageId: body.id,
-				groupMeAccessToken,
 			})
 			return createSuccessResponse()
 		}
@@ -153,7 +147,6 @@ export default {
 			body.text.includes('canceled')
 		) {
 			await groupMeApi.unpinEvent({
-				groupMeAccessToken,
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
 			})
@@ -164,36 +157,39 @@ export default {
 	},
 } satisfies ExportedHandler<Env>
 
+function createSuccessResponse() {
+	return new Response(JSON.stringify({ success: true }), {
+		status: 200,
+		headers: { 'Content-Type': 'application/json' },
+	})
+}
+
 const groupMeApi = {
 	pinEvent: async ({
 		groupId,
 		messageId,
-		groupMeAccessToken,
 	}: {
 		groupId: string
 		messageId: string
-		groupMeAccessToken: string
 	}) =>
 		await fetch(
 			`https://api.groupme.com/v3/conversations/${groupId}/messages/${messageId}/pin`,
 			{
 				method: 'POST',
-				headers: { 'X-Access-Token': groupMeAccessToken },
+				headers: { 'X-Access-Token': GROUPME_ACCESS_TOKEN },
 			}
 		),
 
 	unpinEvent: async ({
-		groupMeAccessToken,
 		groupId,
 		eventId,
 	}: {
-		groupMeAccessToken: string
 		groupId: string
 		eventId: string
 	}) => {
 		const pinnedMessages = await fetch(
 			`https://api.groupme.com/v3/pinned/groups/${groupId}/messages`,
-			{ headers: { 'X-Access-Token': groupMeAccessToken } }
+			{ headers: { 'X-Access-Token': GROUPME_ACCESS_TOKEN } }
 		)
 			.then((res) => res.json())
 			.then((data) =>
@@ -220,7 +216,7 @@ const groupMeApi = {
 			`https://api.groupme.com/v3/conversations/${groupId}/messages/${matchedMessage.id}/unpin`,
 			{
 				method: 'POST',
-				headers: { 'X-Access-Token': groupMeAccessToken },
+				headers: { 'X-Access-Token': GROUPME_ACCESS_TOKEN },
 			}
 		)
 	},
