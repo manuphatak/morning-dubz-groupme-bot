@@ -32,6 +32,27 @@
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
 	 */
 	// "vars": {  "MY_VARIABLE": "production_value" }
+	"vars": {
+		"ENVIRONMENT": "development",
+	},
+	"env": {
+		"staging": {
+			"secrets": {
+				"required": ["GROUPME_ACCESS_TOKEN"],
+			},
+			"vars": {
+				"ENVIRONMENT": "staging",
+			},
+		},
+		"production": {
+			"secrets": {
+				"required": ["GROUPME_ACCESS_TOKEN"],
+			},
+			"vars": {
+				"ENVIRONMENT": "production",
+			},
+		},
+	},
 	/**
 	 * Static Assets
 	 * https://developers.cloudflare.com/workers/static-assets/binding/

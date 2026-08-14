@@ -2,7 +2,9 @@ import { env } from 'cloudflare:workers'
 import { Logger } from 'tslog'
 import { z } from 'zod'
 
-const parentLogger = new Logger()
+const parentLogger = new Logger({
+	type: env.ENVIRONMENT === 'production' ? 'json' : 'pretty',
+})
 
 /**
  * Welcome to Cloudflare Workers! This is your first worker.
