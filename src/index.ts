@@ -84,7 +84,7 @@ export default {
 		}
 		logger.info(
 			{ request: await serializeRequest(request) },
-			'Incoming request'
+			'Incoming message'
 		)
 
 		let body: z.infer<typeof MessageSchema>
@@ -92,6 +92,8 @@ export default {
 		try {
 			const rawBody = await request.json()
 			body = MessageSchema.parse(rawBody)
+
+			logger.info({ body }, `Message: ${body.text}`)
 		} catch (err) {
 			logger.error(err as Object, 'Invalid JSON')
 
@@ -132,7 +134,7 @@ export default {
 			body.attachments[0].type === 'event' &&
 			body.text.includes('created event')
 		) {
-			logger.info({ body }, 'Event is created')
+			logger.info({ body }, 'Event was created')
 			await groupMeApi.pinEvent({
 				groupId: body.group_id,
 				messageId: body.id,
@@ -149,7 +151,7 @@ export default {
 			body.system === true &&
 			body.text.includes('canceled')
 		) {
-			logger.info({ body }, 'Event is canceled')
+			logger.info({ body }, 'Event was canceled')
 			await groupMeApi.unpinEvent({
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
@@ -158,6 +160,7 @@ export default {
 			return createSuccessResponse()
 		}
 
+		logger.info({ body }, 'No action taken for this message')
 		return createSuccessResponse()
 	},
 } satisfies ExportedHandler<Env>
