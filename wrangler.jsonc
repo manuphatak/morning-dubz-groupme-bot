@@ -36,14 +36,6 @@
 		"ENVIRONMENT": "development",
 	},
 	"env": {
-		"staging": {
-			"secrets": {
-				"required": ["GROUPME_ACCESS_TOKEN"],
-			},
-			"vars": {
-				"ENVIRONMENT": "staging",
-			},
-		},
 		"production": {
 			"secrets": {
 				"required": ["GROUPME_ACCESS_TOKEN"],

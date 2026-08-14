@@ -2,22 +2,9 @@ import { env } from 'cloudflare:workers'
 import { Logger } from 'tslog'
 import { z } from 'zod'
 
-const parentLogger = new Logger({
+const logger = new Logger({
 	type: env.ENVIRONMENT === 'production' ? 'json' : 'pretty',
 })
-
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
 
 const GROUPME_ACCESS_TOKEN = env.GROUPME_ACCESS_TOKEN
 const MessageSchema = z.object({
@@ -92,9 +79,6 @@ const MessageSchema = z.object({
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
-		const logger = parentLogger.child({
-			bindings: { requestId: request.headers.get('cf-request-id') },
-		})
 		if (request.method !== 'POST') {
 			return new Response('Method not allowed', { status: 405 })
 		}
