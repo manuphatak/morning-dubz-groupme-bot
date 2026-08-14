@@ -13,6 +13,7 @@
 		"@cloudflare/vitest-pool-workers": "^0.21.1",
 		"@types/node": "^26.2.0",
 		"msw": "^2.15.0",
+		"tslog": "^5.1.0",
 		"typescript": "^7.0.2",
 		"vitest": "~4.1.10",
 		"wrangler": "^4.121.0"

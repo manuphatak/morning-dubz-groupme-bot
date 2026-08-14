@@ -1,4 +1,8 @@
 import { env } from 'cloudflare:workers'
+import { Logger } from 'tslog'
+import { z } from 'zod'
+
+const parentLogger = new Logger()
 
 /**
  * Welcome to Cloudflare Workers! This is your first worker.
@@ -12,7 +16,6 @@ import { env } from 'cloudflare:workers'
  *
  * Learn more at https://developers.cloudflare.com/workers/
  */
-import { z } from 'zod'
 
 const GROUPME_ACCESS_TOKEN = env.GROUPME_ACCESS_TOKEN
 const MessageSchema = z.object({
@@ -87,9 +90,16 @@ const MessageSchema = z.object({
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
+		const logger = parentLogger.child({
+			bindings: { requestId: request.headers.get('cf-request-id') },
+		})
 		if (request.method !== 'POST') {
 			return new Response('Method not allowed', { status: 405 })
 		}
+		logger.info(
+			{ request: await serializeRequest(request) },
+			'Incoming request'
+		)
 
 		let body: z.infer<typeof MessageSchema>
 
@@ -97,6 +107,8 @@ export default {
 			const rawBody = await request.json()
 			body = MessageSchema.parse(rawBody)
 		} catch (err) {
+			logger.error(err as Object, 'Invalid JSON')
+
 			if (err instanceof z.ZodError) {
 				return new Response(
 					JSON.stringify({ error: err.message, issues: err.issues }),
@@ -119,10 +131,13 @@ export default {
 			body.attachments[0]?.type === 'event' &&
 			body.text.endsWith('is starting now')
 		) {
+			logger.info({ body }, 'Event is starting')
 			await groupMeApi.unpinEvent({
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
+				logger,
 			})
+
 			return createSuccessResponse()
 		}
 		// event is created
@@ -131,9 +146,11 @@ export default {
 			body.attachments[0].type === 'event' &&
 			body.text.includes('created event')
 		) {
+			logger.info({ body }, 'Event is created')
 			await groupMeApi.pinEvent({
 				groupId: body.group_id,
 				messageId: body.id,
+				logger,
 			})
 			return createSuccessResponse()
 		}
@@ -146,9 +163,11 @@ export default {
 			body.system === true &&
 			body.text.includes('canceled')
 		) {
+			logger.info({ body }, 'Event is canceled')
 			await groupMeApi.unpinEvent({
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
+				logger,
 			})
 			return createSuccessResponse()
 		}
@@ -168,24 +187,31 @@ const groupMeApi = {
 	pinEvent: async ({
 		groupId,
 		messageId,
+		logger,
 	}: {
 		groupId: string
 		messageId: string
-	}) =>
+		logger: Logger<unknown>
+	}) => {
 		await fetch(
 			`https://api.groupme.com/v3/conversations/${groupId}/messages/${messageId}/pin`,
 			{
 				method: 'POST',
 				headers: { 'X-Access-Token': GROUPME_ACCESS_TOKEN },
 			}
-		),
+		)
+
+		logger.info({ groupId, messageId }, 'Event was pinned')
+	},
 
 	unpinEvent: async ({
 		groupId,
 		eventId,
+		logger,
 	}: {
 		groupId: string
 		eventId: string
+		logger: Logger<unknown>
 	}) => {
 		const pinnedMessages = await fetch(
 			`https://api.groupme.com/v3/pinned/groups/${groupId}/messages`,
@@ -210,7 +236,14 @@ const groupMeApi = {
 					attachment.event_id === eventId
 			)
 		)
-		if (matchedMessage === undefined) return
+		if (matchedMessage === undefined) {
+			logger.debug(
+				{ pinnedMessages, groupId, eventId },
+				'No pinned message found for event'
+			)
+
+			return
+		}
 
 		await fetch(
 			`https://api.groupme.com/v3/conversations/${groupId}/messages/${matchedMessage.id}/unpin`,
@@ -219,5 +252,35 @@ const groupMeApi = {
 				headers: { 'X-Access-Token': GROUPME_ACCESS_TOKEN },
 			}
 		)
+
+		logger.info(
+			{ groupId, messageId: matchedMessage.id, eventId },
+			'Event was unpinned'
+		)
 	},
+}
+
+async function serializeRequest(
+	request: Request<unknown, IncomingRequestCfProperties<unknown>>
+) {
+	const url = new URL(request.url)
+
+	let body = null
+	if (request.method !== 'GET' && request.method !== 'HEAD') {
+		try {
+			body = await request.clone().json()
+		} catch (e) {
+			body = '[Unable to parse body]'
+		}
+	}
+
+	return {
+		method: request.method,
+		url: request.url,
+		path: url.pathname,
+		query: url.search,
+		headers: Object.fromEntries(request.headers.entries()),
+		body,
+		cf: request.cf || null,
+	}
 }
