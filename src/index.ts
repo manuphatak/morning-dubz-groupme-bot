@@ -3,7 +3,7 @@ import { Logger } from 'tslog'
 import { z } from 'zod'
 
 const logger = new Logger({
-	type: env.ENVIRONMENT === 'production' ? 'json' : 'pretty',
+	type: env.LOGGER_TYPE,
 })
 
 const GROUPME_ACCESS_TOKEN = env.GROUPME_ACCESS_TOKEN
@@ -82,18 +82,12 @@ export default {
 		if (request.method !== 'POST') {
 			return new Response('Method not allowed', { status: 405 })
 		}
-		logger.info(
-			{ request: await serializeRequest(request) },
-			'Incoming message'
-		)
+		await logRequest(request)
 
 		let body: z.infer<typeof MessageSchema>
-
 		try {
 			const rawBody = await request.json()
 			body = MessageSchema.parse(rawBody)
-
-			logger.info({ body }, `Message: ${body.text}`)
 		} catch (err) {
 			logger.error(err as Object, 'Invalid JSON')
 
@@ -119,11 +113,10 @@ export default {
 			body.attachments[0]?.type === 'event' &&
 			body.text.endsWith('is starting now')
 		) {
-			logger.info({ body }, 'Event is starting')
+			logger.info({ body }, 'Message: Event is starting')
 			await groupMeApi.unpinEvent({
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
-				logger,
 			})
 
 			return createSuccessResponse()
@@ -134,11 +127,10 @@ export default {
 			body.attachments[0].type === 'event' &&
 			body.text.includes('created event')
 		) {
-			logger.info({ body }, 'Event was created')
+			logger.info({ body }, 'Message: Event was created')
 			await groupMeApi.pinEvent({
 				groupId: body.group_id,
 				messageId: body.id,
-				logger,
 			})
 			return createSuccessResponse()
 		}
@@ -151,11 +143,10 @@ export default {
 			body.system === true &&
 			body.text.includes('canceled')
 		) {
-			logger.info({ body }, 'Event was canceled')
+			logger.info({ body }, 'Message: Event was canceled')
 			await groupMeApi.unpinEvent({
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
-				logger,
 			})
 			return createSuccessResponse()
 		}
@@ -176,11 +167,9 @@ const groupMeApi = {
 	pinEvent: async ({
 		groupId,
 		messageId,
-		logger,
 	}: {
 		groupId: string
 		messageId: string
-		logger: Logger<unknown>
 	}) => {
 		await fetch(
 			`https://api.groupme.com/v3/conversations/${groupId}/messages/${messageId}/pin`,
@@ -190,17 +179,15 @@ const groupMeApi = {
 			}
 		)
 
-		logger.info({ groupId, messageId }, 'Event was pinned')
+		logger.info({ groupId, messageId }, 'Action: Event was pinned')
 	},
 
 	unpinEvent: async ({
 		groupId,
 		eventId,
-		logger,
 	}: {
 		groupId: string
 		eventId: string
-		logger: Logger<unknown>
 	}) => {
 		const pinnedMessages = await fetch(
 			`https://api.groupme.com/v3/pinned/groups/${groupId}/messages`,
@@ -218,6 +205,11 @@ const groupMeApi = {
 			)
 			.then((data) => data.response.messages)
 
+		logger.debug(
+			{ pinnedMessages, groupId, eventId },
+			`${pinnedMessages.length} pinned message${pinnedMessages.length === 1 ? '' : 's'} retrieved`
+		)
+
 		const matchedMessage = pinnedMessages.find((message) =>
 			message.attachments.some(
 				(attachment) =>
@@ -225,14 +217,13 @@ const groupMeApi = {
 					attachment.event_id === eventId
 			)
 		)
-		if (matchedMessage === undefined) {
-			logger.debug(
-				{ pinnedMessages, groupId, eventId },
-				'No pinned message found for event'
-			)
 
-			return
-		}
+		logger.debug(
+			{ matchedMessage, groupId, eventId },
+			`${matchedMessage === undefined ? 'No pinned' : 'Pinned'} message found for event`
+		)
+
+		if (matchedMessage === undefined) return
 
 		await fetch(
 			`https://api.groupme.com/v3/conversations/${groupId}/messages/${matchedMessage.id}/unpin`,
@@ -244,32 +235,37 @@ const groupMeApi = {
 
 		logger.info(
 			{ groupId, messageId: matchedMessage.id, eventId },
-			'Event was unpinned'
+			'Action: Event was unpinned'
 		)
 	},
 }
 
-async function serializeRequest(
+async function logRequest(
 	request: Request<unknown, IncomingRequestCfProperties<unknown>>
 ) {
 	const url = new URL(request.url)
 
-	let body = null
+	let body: { text: string } | null = null
 	if (request.method !== 'GET' && request.method !== 'HEAD') {
 		try {
 			body = await request.clone().json()
 		} catch (e) {
-			body = '[Unable to parse body]'
+			body = { text: '[Unable to parse body]' }
 		}
 	}
 
-	return {
-		method: request.method,
-		url: request.url,
-		path: url.pathname,
-		query: url.search,
-		headers: Object.fromEntries(request.headers.entries()),
-		body,
-		cf: request.cf || null,
-	}
+	logger.info(
+		{
+			request: {
+				method: request.method,
+				url: request.url,
+				path: url.pathname,
+				query: url.search,
+				headers: Object.fromEntries(request.headers.entries()),
+				body,
+				cf: request.cf || null,
+			},
+		},
+		`Message: ${body?.text ?? '[unknown]'}`
+	)
 }

@@ -33,7 +33,7 @@
 	 */
 	// "vars": {  "MY_VARIABLE": "production_value" }
 	"vars": {
-		"ENVIRONMENT": "development",
+		"LOGGER_TYPE": "pretty",
 	},
 	"env": {
 		"production": {
@@ -41,7 +41,7 @@
 				"required": ["GROUPME_ACCESS_TOKEN"],
 			},
 			"vars": {
-				"ENVIRONMENT": "production",
+				"LOGGER_TYPE": "json",
 			},
 		},
 	},
