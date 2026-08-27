@@ -271,6 +271,27 @@ describe('given an event is updated', () => {
 		text: "Manu Phatak updated the time for the event 'Now 3'",
 		user_id: 'calendar',
 	}
+	const createEventBody = {
+		attachments: [
+			{
+				event_id: 'd2d304ead6cc4c52bf5221cb7ae01775',
+				view: 'full',
+				type: 'event',
+			},
+		],
+		avatar_url:
+			'https://i.groupme.com/1024x1024.jpeg.a4df44ca09a84f598e8f946b753da36b',
+		created_at: '2026-08-11T19:56:15.000Z',
+		group_id: '116072458',
+		id: '178647817512111235',
+		name: 'Manu Phatak',
+		sender_id: '109479116',
+		sender_type: 'user',
+		source_guid: '0fd1b475b6a54d63895107291cdfc8a7',
+		system: false,
+		text: "Manu Phatak created event 'Wed am'",
+		user_id: '109479116',
+	}
 	beforeEach(async () => {
 		server.use(
 			http.post(
@@ -338,46 +359,25 @@ describe('given an event is updated', () => {
 				}
 			)
 		)
-
-		const createEventBody = {
-			attachments: [
-				{
-					event_id: 'd2d304ead6cc4c52bf5221cb7ae01775',
-					view: 'full',
-					type: 'event',
-				},
-			],
-			avatar_url:
-				'https://i.groupme.com/1024x1024.jpeg.a4df44ca09a84f598e8f946b753da36b',
-			created_at: '2026-08-11T19:56:15.000Z',
-			group_id: '116072458',
-			id: '178647817512111235',
-			name: 'Manu Phatak',
-			sender_id: '109479116',
-			sender_type: 'user',
-			source_guid: '0fd1b475b6a54d63895107291cdfc8a7',
-			system: false,
-			text: "Manu Phatak created event 'Wed am'",
-			user_id: '109479116',
-		}
-
-		await exports.default.fetch('https://example.com', {
-			method: 'POST',
-			body: JSON.stringify(createEventBody),
-		})
 	})
 
 	it('responds with a 200 status', async () => {
-		const unpinManager = env.UNPIN_MANAGER.getByName('/')
-
-		const response = await exports.default.fetch('https://example.com', {
+		await exports.default.fetch('https://example.com/1', {
+			method: 'POST',
+			body: JSON.stringify(createEventBody),
+		})
+		const response = await exports.default.fetch('https://example.com/1', {
 			method: 'POST',
 			body: JSON.stringify(body),
 		})
 		expect(response.status).toBe(200)
 	})
 	it('has initial state (debug helper)', async () => {
-		const unpinManager = env.UNPIN_MANAGER.getByName('/')
+		await exports.default.fetch('https://example.com/2', {
+			method: 'POST',
+			body: JSON.stringify(createEventBody),
+		})
+		const unpinManager = env.UNPIN_MANAGER.getByName('/2')
 
 		expect(await unpinManager._getState()).toEqual(
 			new Map(
@@ -393,9 +393,13 @@ describe('given an event is updated', () => {
 		)
 	})
 	it('updates the runAt time', async () => {
-		const unpinManager = env.UNPIN_MANAGER.getByName('/')
+		await exports.default.fetch('https://example.com/3', {
+			method: 'POST',
+			body: JSON.stringify(createEventBody),
+		})
+		const unpinManager = env.UNPIN_MANAGER.getByName('/3')
 
-		await exports.default.fetch('https://example.com', {
+		await exports.default.fetch('https://example.com/3', {
 			method: 'POST',
 			body: JSON.stringify(body),
 		})
