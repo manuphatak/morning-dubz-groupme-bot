@@ -15,13 +15,6 @@ type AlarmEvent = {
 
 /** A Durable Object's behavior is defined in an exported Javascript class */
 export class UnpinManager extends DurableObject<Env> {
-	/**
-	 * The constructor is invoked once upon creation of the Durable Object, i.e. the first call to
-	 * 	`DurableObjectStub::get` for a given identifier (no-op constructors can be omitted)
-	 *
-	 * @param ctx - The interface for interacting with Durable Object state
-	 * @param env - The interface to reference bindings declared in wrangler.jsonc
-	 */
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
 	}
@@ -41,7 +34,7 @@ export class UnpinManager extends DurableObject<Env> {
 			eventId,
 		}).then((event) => event.start_at)
 
-		// Schedule an alarm 60 minutes after start time
+		// Schedule the alarm with a delay
 		const alarmTime = eventStartTime
 		alarmTime.setMinutes(alarmTime.getMinutes() + UNPIN_DELAY)
 
@@ -63,7 +56,21 @@ export class UnpinManager extends DurableObject<Env> {
 		logger.info({ eventId }, `Alarm cancelled: ${eventId}`)
 	}
 
-	async alarm() {
+	public async update({
+		eventId,
+		groupId,
+	}: {
+		eventId: string
+		groupId: string
+	}) {
+		const event = await this.ctx.storage.get<AlarmEvent>(`event:${eventId}`)
+
+		if (event === undefined) return
+
+		await this.schedule({ groupId, eventId, messageId: event.messageId })
+	}
+
+	public async alarm() {
 		logger.info(`Checking for alarms`)
 
 		const now = Date.now()
@@ -84,6 +91,10 @@ export class UnpinManager extends DurableObject<Env> {
 		}
 
 		if (nextAlarm) await this.ctx.storage.setAlarm(nextAlarm)
+	}
+
+	public async _getState() {
+		return await this.ctx.storage.list<AlarmEvent>()
 	}
 
 	private async processAlarm({ groupId, eventId, messageId }: AlarmEvent) {
@@ -185,6 +196,23 @@ export default {
 					eventId: body.attachments[0].event_id,
 				}),
 			])
+			return createSuccessResponse()
+		}
+		// event is updated
+		if (
+			body.attachments.length === 1 &&
+			body.attachments[0].type === 'event' &&
+			body.sender_id === 'calendar' &&
+			body.sender_type === 'service' &&
+			body.system === false &&
+			body.text.includes('updated the time for the event')
+		) {
+			logger.info({ body }, 'Message: Event time was updated')
+			await unpinManager.update({
+				groupId: body.group_id,
+				eventId: body.attachments[0].event_id,
+			})
+
 			return createSuccessResponse()
 		}
 
