@@ -1,81 +1,7 @@
-import { env } from 'cloudflare:workers'
-import { Logger } from 'tslog'
-import { z } from 'zod'
-
-const logger = new Logger({
-	type: env.LOGGER_TYPE,
-})
-
-const GROUPME_ACCESS_TOKEN = env.GROUPME_ACCESS_TOKEN
-const MessageSchema = z.object({
-	attachments: z.array(
-		z.discriminatedUnion('type', [
-			z.object({
-				type: z.literal('image'),
-				url: z.httpUrl(),
-			}),
-			z.object({
-				type: z.literal('video'),
-				url: z.httpUrl(),
-				preview_url: z.httpUrl(),
-			}),
-			z.object({
-				type: z.literal('file'),
-				file_id: z.string(),
-			}),
-			z.object({
-				type: z.literal('location'),
-				name: z.string(),
-				lat: z.string().regex(/^-?\d+(\.\d+)?$/),
-				lng: z.string().regex(/^-?\d+(\.\d+)?$/),
-			}),
-			z.object({
-				type: z.literal('emoji'),
-				placeholder: z.string(),
-				charmap: z.array(z.tuple([z.number(), z.number()])),
-			}),
-
-			z.object({
-				type: z.literal('reply'),
-				reply_id: z.string(),
-				base_reply_id: z.string(),
-			}),
-
-			z.object({
-				type: z.literal('mentions'),
-				user_ids: z.array(z.string()),
-				loci: z.array(z.tuple([z.number(), z.number()])),
-			}),
-			z.object({
-				type: z.literal('poll'),
-				poll_id: z.string(),
-			}),
-			z.object({
-				type: z.literal('event'),
-				event_id: z.string(),
-				view: z.enum(['brief', 'full']),
-			}),
-			z.object({
-				type: z.literal('copilot'),
-				message_id: z.string(),
-				part_id: z.string(),
-				prompt_sender: z.string(),
-			}),
-			z.object({
-				type: z.literal('partial_image'),
-				id: z.string(),
-				content: z.string(),
-			}),
-		])
-	),
-	group_id: z.string(),
-	id: z.string(),
-	sender_id: z.string().max(100),
-	sender_type: z.enum(['user', 'service', 'system']),
-	source_guid: z.string(),
-	system: z.boolean(),
-	text: z.string(),
-})
+import z from 'zod'
+import { GroupMeApi } from './api'
+import { logger } from './logger'
+import { MessageSchema } from './schema'
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
@@ -84,7 +10,7 @@ export default {
 		}
 		await logRequest(request)
 
-		let body: z.infer<typeof MessageSchema>
+		let body: MessageSchema
 		try {
 			const rawBody = await request.json()
 			body = MessageSchema.parse(rawBody)
@@ -114,7 +40,7 @@ export default {
 			body.text.endsWith('is starting now')
 		) {
 			logger.info({ body }, 'Message: Event is starting')
-			await groupMeApi.unpinEvent({
+			await GroupMeApi.unpinEvent({
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
 			})
@@ -128,7 +54,7 @@ export default {
 			body.text.includes('created event')
 		) {
 			logger.info({ body }, 'Message: Event was created')
-			await groupMeApi.pinEvent({
+			await GroupMeApi.pinEvent({
 				groupId: body.group_id,
 				messageId: body.id,
 			})
@@ -144,7 +70,7 @@ export default {
 			body.text.includes('canceled')
 		) {
 			logger.info({ body }, 'Message: Event was canceled')
-			await groupMeApi.unpinEvent({
+			await GroupMeApi.unpinEvent({
 				groupId: body.group_id,
 				eventId: body.attachments[0].event_id,
 			})
@@ -161,83 +87,6 @@ function createSuccessResponse() {
 		status: 200,
 		headers: { 'Content-Type': 'application/json' },
 	})
-}
-
-const groupMeApi = {
-	pinEvent: async ({
-		groupId,
-		messageId,
-	}: {
-		groupId: string
-		messageId: string
-	}) => {
-		await fetch(
-			`https://api.groupme.com/v3/conversations/${groupId}/messages/${messageId}/pin`,
-			{
-				method: 'POST',
-				headers: { 'X-Access-Token': GROUPME_ACCESS_TOKEN },
-			}
-		)
-
-		logger.info({ groupId, messageId }, 'Action: Event was pinned')
-	},
-
-	unpinEvent: async ({
-		groupId,
-		eventId,
-	}: {
-		groupId: string
-		eventId: string
-	}) => {
-		const pinnedMessages = await fetch(
-			`https://api.groupme.com/v3/pinned/groups/${groupId}/messages`,
-			{ headers: { 'X-Access-Token': GROUPME_ACCESS_TOKEN } }
-		)
-			.then((res) => res.json())
-			.then((data) =>
-				z
-					.object({
-						response: z.object({
-							messages: z.array(MessageSchema),
-						}),
-					})
-					.parseAsync(data)
-			)
-			.then((data) => data.response.messages)
-
-		logger.debug(
-			{ pinnedMessages, groupId, eventId },
-			`${pinnedMessages.length} pinned message${pinnedMessages.length === 1 ? '' : 's'} retrieved`
-		)
-
-		const matchedMessage = pinnedMessages.find((message) =>
-			message.attachments.some(
-				(attachment) =>
-					attachment.type === 'event' &&
-					attachment.event_id === eventId
-			)
-		)
-
-		logger.debug(
-			{ matchedMessage, groupId, eventId },
-			`${matchedMessage === undefined ? 'No pinned' : 'Pinned'} message found for event`
-		)
-
-		if (matchedMessage === undefined) return
-
-		await fetch(
-			`https://api.groupme.com/v3/conversations/${groupId}/messages/${matchedMessage.id}/unpin`,
-			{
-				method: 'POST',
-				headers: { 'X-Access-Token': GROUPME_ACCESS_TOKEN },
-			}
-		)
-
-		logger.info(
-			{ groupId, messageId: matchedMessage.id, eventId },
-			'Action: Event was unpinned'
-		)
-	},
 }
 
 async function logRequest(
