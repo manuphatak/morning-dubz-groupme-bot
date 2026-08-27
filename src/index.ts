@@ -4,7 +4,7 @@ import { logger } from './logger'
 import { MessageSchema } from './schema'
 import { DurableObject } from 'cloudflare:workers'
 
-const UNPIN_DELAY = 0
+const UNPIN_DELAY = 60
 
 type AlarmEvent = {
 	groupId: string

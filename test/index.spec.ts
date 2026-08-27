@@ -386,7 +386,7 @@ describe('given an event is updated', () => {
 						eventId: 'd2d304ead6cc4c52bf5221cb7ae01775',
 						groupId: '116072458',
 						messageId: '178647817512111235',
-						runAt: 1787918400000,
+						runAt: 1787922000000,
 					},
 				})
 			)
@@ -411,7 +411,7 @@ describe('given an event is updated', () => {
 						eventId: 'd2d304ead6cc4c52bf5221cb7ae01775',
 						groupId: '116072458',
 						messageId: '178647817512111235',
-						runAt: 1787925600000,
+						runAt: 1787929200000,
 					},
 				})
 			)
