@@ -71,3 +71,68 @@ export const MessageSchema = z.object({
 })
 
 export type MessageSchema = z.infer<typeof MessageSchema>
+
+export const EventSchema = z.object({
+	// Base fields found across payloads
+	name: z.string(),
+	description: z.string().optional(),
+	image_url: z.url().optional(),
+
+	// Geolocation properties (optional based on second sample)
+	location: z
+		.object({
+			lat: z.number(),
+			lng: z.number(),
+			name: z.string(),
+			address: z.string(),
+		})
+		.optional(),
+
+	// Date and Time tracking
+	start_at: z.coerce.date(),
+	end_at: z.coerce.date(),
+	is_all_day: z.boolean(),
+	timezone: z.string(),
+	end_at_set: z.boolean().optional(),
+
+	// Calling features
+	scheduled_call: z.boolean().optional(),
+	call_started: z.boolean().optional(),
+
+	// Visual/Theming configuration
+	aesthetics: z
+		.object({
+			font: z.string(),
+			theme: z.string(),
+			effect: z.string(),
+		})
+		.optional(),
+
+	// Identifiers
+	conversation_id: z.string(),
+	event_id: z.string(),
+	creator_id: z.string(),
+
+	// Attendance metrics
+	reminders: z.array(z.number()),
+	going: z.array(z.string()),
+	not_going: z.array(z.string()),
+	maybe_going: z.array(z.string()).optional(),
+	waitlisted: z.array(z.string()).optional(),
+	going_count: z.number().optional(),
+
+	// RSVP Timestamps mapping user ID keys to date strings
+	rsvp_list: z.record(z.string(), z.coerce.date()).optional(),
+	rsvp_sources: z.record(z.string(), z.string()).optional(),
+
+	// Deep linking and share metrics
+	share_url: z.url().optional(),
+	deep_link_ios: z.string().optional(), // Protocols can use custom schemes like 'groupme://'
+	deep_link_android: z.string().optional(),
+	share_qr_code: z.url().optional(),
+
+	// Meta parameters
+	is_top_level: z.boolean().optional(),
+	created_at: z.coerce.date(),
+	updated_at: z.coerce.date(),
+})

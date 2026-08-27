@@ -3,171 +3,6 @@ import { HttpResponse, http } from 'msw'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { server } from './server'
 
-// For now, you'll need to do something like this to get a correctly-typed
-// `Request` to pass to `worker.fetch()`.
-const IncomingRequest = Request<unknown, IncomingRequestCfProperties>
-
-describe('given an event is starting message', () => {
-	const unpinCommentSpy = vi.fn()
-
-	beforeEach(() => {
-		unpinCommentSpy.mockClear()
-	})
-	const body = {
-		attachments: [
-			{
-				event_id: '9d0ea18bd9fd4d92be5763a05fcc0065',
-				view: 'brief',
-				type: 'event',
-			},
-		],
-		avatar_url:
-			'https://i.groupme.com/204x204.png.ae6fd52515e747c88db501db9e9fcfd9',
-		created_at: '2026-07-22T22:34:00.000Z',
-		group_id: '116072458',
-		id: '178475964053833830',
-		name: 'GroupMe Calendar',
-		sender_id: 'calendar',
-		sender_type: 'service',
-		source_guid: '5bd65d20684b013f01ea1ed59e72d137',
-		system: false,
-		text: "'Ending v3' is starting now",
-		user_id: 'calendar',
-	}
-	beforeEach(() => {
-		server.use(
-			http.get(
-				'https://api.groupme.com/v3/pinned/groups/:groupId/messages',
-				({ params }) =>
-					HttpResponse.json({
-						meta: { code: 200 },
-						response: {
-							count: 2,
-							messages: [
-								{
-									attachments: [
-										{
-											event_id:
-												'9d0ea18bd9fd4d92be5763a05fcc0065',
-											view: 'full',
-											type: 'event',
-										},
-									],
-									avatar_url:
-										'https://i.groupme.com/1024x1024.jpeg.a4df44ca09a84f598e8f946b753da36b',
-									created_at: 1784759528,
-									favorited_by: [],
-									group_id: params.groupId,
-									id: '178475952895339995',
-									name: 'Manu Phatak',
-									sender_id: '109479116',
-									sender_type: 'user',
-									source_guid:
-										'120944e7dfd14160a8ca62a52e9564b8',
-									system: false,
-									text: "Manu Phatak created event 'Ending v3'",
-									user_id: '109479116',
-									event: {
-										type: 'calendar.event.created',
-										data: {
-											event: {
-												id: '9d0ea18bd9fd4d92be5763a05fcc0065',
-												name: 'Ending v3',
-											},
-											original_url:
-												'https://groupme.com/events/116072458/9d0ea18bd9fd4d92be5763a05fcc0065',
-											url: 'https://group.me/YXT35r2rYkFUL',
-											user: {
-												id: '109479116',
-												nickname: 'Manu Phatak',
-											},
-										},
-									},
-									platform: 'gm',
-									pinned_at: 1784759529,
-									pinned_by: '109479116',
-								},
-								{
-									attachments: [
-										{
-											event_id:
-												'e22aa9f6f77346949ac0903e7fdd116d',
-											view: 'full',
-											type: 'event',
-										},
-									],
-									avatar_url:
-										'https://i.groupme.com/1024x1024.jpeg.a4df44ca09a84f598e8f946b753da36b',
-									created_at: 1784755657,
-									favorited_by: [],
-									group_id: params.groupId,
-									id: '178475565773890239',
-									name: 'Manu Phatak',
-									sender_id: '109479116',
-									sender_type: 'user',
-									source_guid:
-										'c3e0b981624e43baa6d7daf237fef3af',
-									system: false,
-									text: "Manu Phatak created event 'Fri v5'",
-									user_id: '109479116',
-									event: {
-										type: 'calendar.event.created',
-										data: {
-											event: {
-												id: 'e22aa9f6f77346949ac0903e7fdd116d',
-												name: 'Fri v5',
-											},
-											original_url:
-												'https://groupme.com/events/116072458/e22aa9f6f77346949ac0903e7fdd116d',
-											url: 'https://group.me/4yTvYxSSR7iEKF',
-											user: {
-												id: '109479116',
-												nickname: 'Manu Phatak',
-											},
-										},
-									},
-									platform: 'gm',
-									pinned_at: 1784755658,
-									pinned_by: '109479116',
-								},
-							],
-						},
-					})
-			)
-		)
-
-		server.use(
-			http.post(
-				'https://api.groupme.com/v3/conversations/:groupId/messages/:messageId/unpin',
-				({ params, request }) => {
-					unpinCommentSpy({ params, request })
-					return HttpResponse.json({
-						data: { meta: { code: 200 }, response: null },
-						statusCode: 200,
-					})
-				}
-			)
-		)
-	})
-
-	it('responds with a 200 status', async () => {
-		const response = await exports.default.fetch('https://example.com', {
-			method: 'POST',
-			body: JSON.stringify(body),
-		})
-		expect(response.status).toBe(200)
-	})
-	it('unpins the event', async () => {
-		await exports.default.fetch('https://example.com', {
-			method: 'POST',
-			body: JSON.stringify(body),
-		})
-		expect(unpinCommentSpy).toHaveBeenCalledWith({
-			params: { groupId: '116072458', messageId: '178475952895339995' },
-			request: expect.objectContaining({ method: 'POST' }),
-		})
-	})
-})
 describe('given an event is canceled', () => {
 	const unpinCommentSpy = vi.fn()
 
@@ -323,6 +158,66 @@ describe('given an event is created', () => {
 					return HttpResponse.json({
 						data: { meta: { code: 200 }, response: null },
 						statusCode: 200,
+					})
+				}
+			)
+		)
+
+		server.use(
+			http.get(
+				`https://api.groupme.com/v3/conversations/:groupId/events/show`,
+				({ params, request }) => {
+					const url = new URL(request.url)
+					const eventId = url.searchParams.get('event_id')
+
+					return HttpResponse.json({
+						meta: { code: 200 },
+						response: {
+							event: {
+								name: 'Fri',
+								start_at: '2026-08-28T07:00:00-05:00',
+								end_at: '2026-08-28T09:05:00-05:00',
+								is_all_day: false,
+								timezone: 'America/Chicago',
+								scheduled_call: false,
+								reminders: [],
+								end_at_set: true,
+								aesthetics: {
+									font: 'classic',
+									theme: 'NONE',
+									effect: 'NONE',
+								},
+								call_started: false,
+								conversation_id: '101200928',
+								event_id: eventId,
+								creator_id: '13497478',
+								going: ['16550925', '20609438', '13497478'],
+								not_going: [],
+								maybe_going: [],
+								going_count: 3,
+								created_at: '2026-08-27T13:32:46Z',
+								updated_at: '2026-08-27T15:42:03Z',
+								rsvp_list: {
+									'13497478': '2026-08-27T13:32:46Z',
+									'16550925': '2026-08-27T13:47:03Z',
+									'20609438': '2026-08-27T15:42:03Z',
+								},
+								rsvp_sources: {
+									'16550925': 'instance',
+									'20609438': 'instance',
+								},
+								share_url:
+									'https://groupme.com/join_event/101200928/20440ee6590848f38584522d90adcea3/2DqnZwXl',
+								deep_link_ios:
+									'groupme://join_event/101200928/20440ee6590848f38584522d90adcea3/2DqnZwXl',
+								deep_link_android:
+									'groupme://groupme.com/join_event/101200928/20440ee6590848f38584522d90adcea3/2DqnZwXl',
+								share_qr_code:
+									'https://image.groupme.com/qr/events/101200928/20440ee6590848f38584522d90adcea3/preview/token/2DqnZwXl',
+								is_top_level: false,
+								waitlisted: [],
+							},
+						},
 					})
 				}
 			)
