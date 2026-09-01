@@ -1,7 +1,9 @@
 import { env, exports } from 'cloudflare:workers'
 import { HttpResponse, http } from 'msw'
-import { beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { server } from './server'
+import { Temporal } from '@js-temporal/polyfill'
+import { reset, runInDurableObject } from 'cloudflare:test'
 
 describe('given an event is canceled', () => {
 	const unpinCommentSpy = vi.fn()
@@ -245,12 +247,22 @@ describe('given an event is created', () => {
 })
 
 describe('given an event is updated', () => {
-	let requestCount = 0
+	const START_AT_0 = '2026-08-28T07:00:00-05:00'
+	const START_AT_1 = '2026-08-28T09:00:00-05:00'
+
+	let mockStartAt = vi.fn()
 
 	beforeEach(() => {
-		requestCount = 0
+		mockStartAt.mockReturnValueOnce(START_AT_0).mockReturnValue(START_AT_1)
+		// Enable fake timers
+		vi.useFakeTimers()
+		vi.setSystemTime(START_AT_0)
 	})
-	const body = {
+	afterEach(async () => {
+		await reset()
+	})
+
+	const updateEventBody = {
 		attachments: [
 			{
 				event_id: 'd2d304ead6cc4c52bf5221cb7ae01775',
@@ -268,7 +280,7 @@ describe('given an event is updated', () => {
 		sender_type: 'service',
 		source_guid: '1b4c2fb08481013fc04d0a820081a5c1',
 		system: false,
-		text: "Manu Phatak updated the time for the event 'Now 3'",
+		text: "Manu Phatak updated the time for the event 'Wed am'",
 		user_id: 'calendar',
 	}
 	const createEventBody = {
@@ -303,27 +315,30 @@ describe('given an event is updated', () => {
 					})
 			)
 		)
+		server.use(
+			http.post(
+				'https://api.groupme.com/v3/conversations/:groupId/messages/:messageId/unpin',
+				({ params, request }) =>
+					HttpResponse.json({
+						data: { meta: { code: 200 }, response: null },
+						statusCode: 200,
+					})
+			)
+		)
 
 		server.use(
 			http.get(
 				`https://api.groupme.com/v3/conversations/:groupId/events/show`,
 				({ params, request }) => {
-					requestCount++
-
 					const url = new URL(request.url)
 					const eventId = url.searchParams.get('event_id')
-
-					const start_at =
-						requestCount === 1
-							? '2026-08-28T07:00:00-05:00'
-							: '2026-08-28T09:00:00-05:00'
 
 					return HttpResponse.json({
 						meta: { code: 200 },
 						response: {
 							event: {
-								name: 'Fri',
-								start_at,
+								name: 'Wed am',
+								start_at: mockStartAt(),
 								end_at: '2026-08-28T09:05:00-05:00',
 								is_all_day: false,
 								timezone: 'America/Chicago',
@@ -332,7 +347,7 @@ describe('given an event is updated', () => {
 								end_at_set: true,
 
 								call_started: false,
-								conversation_id: '101200928',
+								conversation_id: params.groupId,
 								event_id: eventId,
 								creator_id: '13497478',
 								going: [],
@@ -362,59 +377,71 @@ describe('given an event is updated', () => {
 	})
 
 	it('responds with a 200 status', async () => {
-		await exports.default.fetch('https://example.com/1', {
+		await exports.default.fetch('https://example.com/', {
 			method: 'POST',
 			body: JSON.stringify(createEventBody),
 		})
-		const response = await exports.default.fetch('https://example.com/1', {
+		const response = await exports.default.fetch('https://example.com/', {
 			method: 'POST',
-			body: JSON.stringify(body),
+			body: JSON.stringify(updateEventBody),
 		})
 		expect(response.status).toBe(200)
 	})
 	it('has initial state (debug helper)', async () => {
-		await exports.default.fetch('https://example.com/2', {
+		await exports.default.fetch('https://example.com/', {
 			method: 'POST',
 			body: JSON.stringify(createEventBody),
 		})
-		const unpinManager = env.UNPIN_MANAGER.getByName('/2')
 
-		expect(await unpinManager._getState()).toEqual(
-			new Map(
-				Object.entries({
-					'event:d2d304ead6cc4c52bf5221cb7ae01775': {
-						eventId: 'd2d304ead6cc4c52bf5221cb7ae01775',
-						groupId: '116072458',
-						messageId: '178647817512111235',
-						runAt: 1787922000000,
-					},
-				})
-			)
+		await runInDurableObject(
+			env.UNPIN_MANAGER.getByName('/'),
+			async (instance, state) => {
+				expect(await state.storage.list()).toEqual(
+					new Map(
+						Object.entries({
+							'event:d2d304ead6cc4c52bf5221cb7ae01775': {
+								eventId: 'd2d304ead6cc4c52bf5221cb7ae01775',
+								groupId: '116072458',
+								messageId: '178647817512111235',
+								runAt: Temporal.Instant.from(START_AT_0).add({
+									hours: 1,
+								}).epochMilliseconds,
+							},
+						})
+					)
+				)
+			}
 		)
 	})
 	it('updates the runAt time', async () => {
-		await exports.default.fetch('https://example.com/3', {
+		await exports.default.fetch('https://example.com/', {
 			method: 'POST',
 			body: JSON.stringify(createEventBody),
 		})
-		const unpinManager = env.UNPIN_MANAGER.getByName('/3')
 
-		await exports.default.fetch('https://example.com/3', {
+		await exports.default.fetch('https://example.com/', {
 			method: 'POST',
-			body: JSON.stringify(body),
+			body: JSON.stringify(updateEventBody),
 		})
 
-		expect(await unpinManager._getState()).toEqual(
-			new Map(
-				Object.entries({
-					'event:d2d304ead6cc4c52bf5221cb7ae01775': {
-						eventId: 'd2d304ead6cc4c52bf5221cb7ae01775',
-						groupId: '116072458',
-						messageId: '178647817512111235',
-						runAt: 1787929200000,
-					},
-				})
-			)
+		await runInDurableObject(
+			env.UNPIN_MANAGER.getByName('/'),
+			async (instance, state) => {
+				expect(await state.storage.list()).toEqual(
+					new Map(
+						Object.entries({
+							'event:d2d304ead6cc4c52bf5221cb7ae01775': {
+								eventId: 'd2d304ead6cc4c52bf5221cb7ae01775',
+								groupId: '116072458',
+								messageId: '178647817512111235',
+								runAt: Temporal.Instant.from(START_AT_1).add({
+									hours: 1,
+								}).epochMilliseconds,
+							},
+						})
+					)
+				)
+			}
 		)
 	})
 })

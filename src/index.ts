@@ -1,10 +1,11 @@
+import { Temporal } from '@js-temporal/polyfill'
+import { DurableObject } from 'cloudflare:workers'
 import z from 'zod'
 import { GroupMeSdk } from './api'
 import { logger } from './logger'
 import { MessageSchema } from './schema'
-import { DurableObject } from 'cloudflare:workers'
 
-const UNPIN_DELAY = 60
+const UNPIN_DELAY = Temporal.Duration.from({ hours: 1 })
 
 type AlarmEvent = {
 	groupId: string
@@ -28,24 +29,23 @@ export class UnpinManager extends DurableObject<Env> {
 		eventId: string
 		messageId: string
 	}) {
-		// Find event start time
-		const eventStartTime = await GroupMeSdk.getEvent({
+		const alarmTime = await GroupMeSdk.getEvent({
 			groupId,
 			eventId,
-		}).then((event) => event.start_at)
+		}).then((event) => event.start_at.add(UNPIN_DELAY))
 
-		// Schedule the alarm with a delay
-		const alarmTime = eventStartTime
-		alarmTime.setMinutes(alarmTime.getMinutes() + UNPIN_DELAY)
-
-		await this.addAlarm(eventId, groupId, messageId, alarmTime.getTime())
+		await this.addAlarm(
+			eventId,
+			groupId,
+			messageId,
+			alarmTime.epochMilliseconds
+		)
 		logger.info(
 			{
 				groupId,
 				eventId,
 				messageId,
-				eventStartTime,
-				alarmTime,
+				alarmTime: alarmTime.toString(),
 			},
 			`Alarm scheduled: ${alarmTime}`
 		)
@@ -73,7 +73,7 @@ export class UnpinManager extends DurableObject<Env> {
 	public async alarm() {
 		logger.info(`Checking for alarms`)
 
-		const now = Date.now()
+		const now = Temporal.Now.instant().epochMilliseconds
 		const events = await this.ctx.storage.list<AlarmEvent>({
 			prefix: 'event:',
 		})
@@ -91,10 +91,6 @@ export class UnpinManager extends DurableObject<Env> {
 		}
 
 		if (nextAlarm) await this.ctx.storage.setAlarm(nextAlarm)
-	}
-
-	public async _getState() {
-		return await this.ctx.storage.list<AlarmEvent>()
 	}
 
 	private async processAlarm({ groupId, eventId, messageId }: AlarmEvent) {
